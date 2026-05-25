@@ -1,0 +1,9 @@
+version: "3.8"
+services:
+  compiler:
+    build: .
+    container_name: subnautica_mod_compiler
+    volumes:
+      - .:/app
+      - ~/.local/share/Steam/steamapps/common/Subnautica/Subnautica_Data/Managed:/libs/subnautica:ro
+      - ~/.local/share/Steam/steamapps/common/Subnautica/BepInEx/core:/libs/bepinex:ro
