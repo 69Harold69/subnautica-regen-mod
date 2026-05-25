@@ -44,27 +44,26 @@ namespace SubnauticaRegenMod
         public float rotY;
         public float rotZ;
         public float rotW;
-        public long respawnTimestamp;
+        public int minutosRestantes; // CIRUGÍA 1: Cambiado de long a int para la cuenta regresiva directa
     }
 
     public class ResourceRegenComponent : MonoBehaviour
     {
-        private static readonly object FileLock = new object();
+        // Unificamos el candado para que sea accesible de forma interna y global por el reconstructor
+        public static readonly object FileLock = new object();
 
         private void Start()
         {
-            InvokeRepeating(nameof(CheckQueue), 10f, 15f);
-            InvokeRepeating(nameof(EjecutarEscaneoDelPasado), 12f, 4f); // Arranca a los 12s, repite cada 4s
+            // CIRUGÍA 2: Cambiado de 15s a 60s (1 minuto completo) para la optimización por lotes
+            InvokeRepeating(nameof(CheckQueue), 10f, 60f);
+            InvokeRepeating(nameof(EjecutarEscaneoDelPasado), 12f, 4f); 
         }
 
         private void CheckQueue()
         {
             if (!File.Exists(MainPlugin.SaveFilePath)) return;
-            
-            // Validación nativa segura de Unity: si el player está activo en la jerarquía, el mapa ya cargó
             if (Player.main == null || !Player.main.isActiveAndEnabled) return;
 
-            long currentUnixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             List<SavedResource> queue = new List<SavedResource>();
             List<SavedResource> remaining = new List<SavedResource>();
             List<SavedResource> toRespawn = new List<SavedResource>();
@@ -87,9 +86,12 @@ namespace SubnauticaRegenMod
                     return;
                 }
 
+                // CIRUGÍA 3: Restamos 1 minuto a todos los elementos por lote
                 foreach (var res in queue)
                 {
-                    if (currentUnixTime >= res.respawnTimestamp)
+                    res.minutosRestantes--;
+
+                    if (res.minutosRestantes <= 0)
                     {
                         toRespawn.Add(res);
                     }
@@ -99,6 +101,7 @@ namespace SubnauticaRegenMod
                     }
                 }
 
+                // Tu lógica de escritura original se mantiene intacta y limpia
                 if (toRespawn.Count > 0)
                 {
                     try
@@ -140,7 +143,6 @@ namespace SubnauticaRegenMod
 
         private void EjecutarEscaneoDelPasado()
         {
-            // Si el jugador no está listo o activo en el mapa, evitamos evaluar celdas
             if (Player.main == null || !Player.main.isActiveAndEnabled) return;
 
             if (LargeWorldStreamer.main != null && LargeWorldStreamer.main.cellManager != null)
@@ -187,7 +189,9 @@ namespace SubnauticaRegenMod
                     var loadedData = JsonUtility.FromJson<JsonListWrapper<SavedResource>>(wrapper);
                     if (loadedData != null && loadedData.items != null) queue = loadedData.items;
                 }
-                res.respawnTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60;
+                
+                // Si el jugador está muy cerca, le damos 1 minuto de prórroga antes de volver a evaluar
+                res.minutosRestantes = 1;
                 queue.Add(res);
 
                 string rawJson = JsonUtility.ToJson(new JsonListWrapper<SavedResource> { items = queue }, true);
@@ -206,8 +210,6 @@ namespace SubnauticaRegenMod
     [HarmonyPatch(nameof(BreakableResource.BreakIntoResources))]
     public static class BreakableResource_Patch
     {
-        private static readonly object FileLock = new object();
-
         [HarmonyPrefix]
         public static void Prefix(BreakableResource __instance)
         {
@@ -218,9 +220,7 @@ namespace SubnauticaRegenMod
             Quaternion rotation = __instance.transform.rotation;
             string resourceType = __instance.defaultPrefabTechType.ToString();
 
-            long currentUnixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            long respawnTime = currentUnixTime + 300;
-
+            // Guardamos directamente con los 5 minutos iniciales de cuenta regresiva
             SavedResource newResource = new SavedResource
             {
                 techType = resourceType,
@@ -231,10 +231,10 @@ namespace SubnauticaRegenMod
                 rotY = rotation.y,
                 rotZ = rotation.z,
                 rotW = rotation.w,
-                respawnTimestamp = respawnTime
+                minutosRestantes = 5 
             };
 
-            lock (FileLock)
+            lock (ResourceRegenComponent.FileLock) // Usamos el candado unificado
             {
                 List<SavedResource> queue = new List<SavedResource>();
 
