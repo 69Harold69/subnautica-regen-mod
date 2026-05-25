@@ -47,11 +47,22 @@ namespace SubnauticaRegenMod
 
         private static void ProcesarPresenciaDeRecursos(Transform cellRoot)
         {
-            // Escaneo molecular de control: Contamos cuántos elementos visuales heredados existen
-            int entidadesVivas = cellRoot.childCount;
-            
-            // Por ahora, registramos en el Log que el Módulo 2 está leyendo el interior de la celda de forma exitosa
-            MainPlugin.ModLogger?.LogInfo($"[RegenMod] Módulo 2 analizó liveRoot awake de forma segura. Entidades presentes: {entidadesVivas}");
+            // Buscamos de golpe todos los componentes BreakableResource en los hijos de la celda
+            BreakableResource[] recursosVivos = cellRoot.GetComponentsInChildren<BreakableResource>(true);
+
+            if (recursosVivos.Length > 0)
+            {
+                MainPlugin.ModLogger?.LogInfo($"[RegenMod] Escaneando celda. Encontrados {recursosVivos.Length} afloramientos vivos:");
+                
+                foreach (BreakableResource piedra in recursosVivos)
+                {
+                    // Extraemos su tipo por defecto y su posición global fija
+                    TechType tipo = piedra.defaultPrefabTechType;
+                    Vector3 pos = piedra.transform.position;
+
+                    MainPlugin.ModLogger?.LogInfo($" -> Recurso: {tipo} en posición: X:{pos.x:F1}, Y:{pos.y:F1}, Z:{pos.z:F1}");
+                }
+            }
         }
     }
 }
